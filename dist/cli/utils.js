@@ -1,0 +1,178 @@
+import { Database } from 'bun:sqlite';
+import { existsSync } from 'fs';
+import { homedir, platform } from 'os';
+import { join, basename } from 'path';
+import { createInterface } from 'readline';
+import { createOpencodeClient } from '@opencode-ai/sdk/v2';
+import { openForgeDatabase } from '../storage/database';
+import { findPartialMatch } from '../utils/partial-match';
+function resolveDefaultDbPath() {
+    const localForgePath = join(process.cwd(), '.opencode', 'state', 'opencode', 'forge', 'graph.db');
+    if (existsSync(localForgePath)) {
+        return localForgePath;
+    }
+    const localPath = join(process.cwd(), '.opencode', 'state', 'opencode', 'graph', 'graph.db');
+    if (existsSync(localPath)) {
+        return localPath;
+    }
+    const defaultBase = join(homedir(), platform() === 'win32' ? 'AppData' : '.local', 'share');
+    const xdgDataHome = process.env['XDG_DATA_HOME'] || defaultBase;
+    const forgeDir = join(xdgDataHome, 'opencode', 'forge');
+    if (existsSync(join(forgeDir, 'graph.db'))) {
+        return join(forgeDir, 'graph.db');
+    }
+    const dataDir = join(xdgDataHome, 'opencode', 'graph');
+    return join(dataDir, 'graph.db');
+}
+export function openDatabase(dbPath) {
+    const resolvedPath = dbPath || resolveDefaultDbPath();
+    if (!existsSync(resolvedPath)) {
+        console.error(`Database not found at ${resolvedPath}. Run OpenCode first to initialize OpenCode Forge.`);
+        process.exit(1);
+    }
+    return openForgeDatabase(resolvedPath);
+}
+export function confirm(message) {
+    return new Promise((resolve) => {
+        const rl = createInterface({
+            input: process.stdin,
+            output: process.stdout,
+        });
+        rl.question(`${message} (y/n): `, (answer) => {
+            rl.close();
+            resolve(answer.toLowerCase() === 'y');
+        });
+    });
+}
+/**
+ * Opens the opencode.db readonly and passes it to `fn`. Handles all lifecycle
+ * (path resolution, existsSync check, read-only open, try/finally close).
+ *
+ * Returns `null` if opencode.db is missing or any error occurs.
+ */
+function withOpencodeProjectDb(fn) {
+    try {
+        const defaultBase = join(homedir(), platform() === 'win32' ? 'AppData' : '.local', 'share');
+        const xdgDataHome = process.env['XDG_DATA_HOME'] || defaultBase;
+        const opencodePath = join(xdgDataHome, 'opencode', 'opencode.db');
+        if (!existsSync(opencodePath))
+            return null;
+        const db = new Database(opencodePath, { readonly: true });
+        try {
+            return fn(db);
+        }
+        finally {
+            db.close();
+        }
+    }
+    catch {
+        return null;
+    }
+}
+export function resolveProjectNames() {
+    const result = withOpencodeProjectDb((db) => {
+        const nameMap = new Map();
+        const rows = db.prepare('SELECT id, worktree FROM project').all();
+        for (const row of rows) {
+            nameMap.set(row.id, basename(row.worktree));
+        }
+        return nameMap;
+    });
+    return result ?? new Map();
+}
+export function resolveProjectIdByName(name) {
+    return withOpencodeProjectDb((db) => {
+        const rows = db.prepare('SELECT id, worktree FROM project').all();
+        for (const row of rows) {
+            if (basename(row.worktree) === name)
+                return row.id;
+        }
+        return null;
+    }) ?? null;
+}
+export function parseGlobalOptions(args) {
+    const globalOpts = {};
+    const remainingArgs = [];
+    let i = 0;
+    while (i < args.length) {
+        const arg = args[i];
+        if (arg === '--db-path') {
+            globalOpts.dbPath = args[++i];
+        }
+        else if (arg === '--project' || arg === '-p') {
+            globalOpts.projectId = args[++i];
+        }
+        else if (arg === '--dir' || arg === '-d') {
+            globalOpts.dir = args[++i];
+        }
+        else if (arg === '--help' || arg === '-h') {
+            globalOpts.help = true;
+        }
+        else {
+            remainingArgs.push(arg);
+        }
+        i++;
+    }
+    return { globalOpts, remainingArgs };
+}
+/**
+ * Builds an OpencodeClient from a server URL, extracting embedded Basic Auth
+ * credentials (or falling back to `OPENCODE_SERVER_PASSWORD` env var).
+ */
+export function createOpencodeClientFromServer(serverUrl, directory) {
+    const url = new URL(serverUrl);
+    const password = url.password || process.env['OPENCODE_SERVER_PASSWORD'];
+    const cleanUrl = new URL(url.toString());
+    cleanUrl.username = '';
+    cleanUrl.password = '';
+    const clientConfig = {
+        baseUrl: cleanUrl.toString(),
+        directory,
+    };
+    if (password) {
+        clientConfig.headers = {
+            Authorization: `Basic ${Buffer.from(`opencode:${password}`).toString('base64')}`,
+        };
+    }
+    return createOpencodeClient(clientConfig);
+}
+/**
+ * Resolves a partial loop name against a list of loops. On ambiguity or no
+ * match, prints a message to stderr listing all available loops and exits
+ * with code 1.
+ */
+export function resolveLoopByNameOrExit(name, loops) {
+    const { match, candidates } = findPartialMatch(name, loops, (l) => [
+        l.state.loopName,
+        l.state.worktreeBranch,
+    ]);
+    if (!match && candidates.length > 0) {
+        console.error(`Multiple loops match '${name}':`);
+        for (const c of candidates) {
+            console.error(`  - ${c.state.loopName}`);
+        }
+        console.error('');
+        process.exit(1);
+    }
+    if (!match) {
+        console.error(`Loop not found: ${name}`);
+        console.error('');
+        console.error('Available loops:');
+        for (const l of loops) {
+            console.error(`  - ${l.state.loopName}`);
+        }
+        console.error('');
+        process.exit(1);
+    }
+    return match;
+}
+/**
+ * Prints a message surrounded by blank lines. Matches the existing
+ * `console.log('')/log(msg)/log('')` boilerplate across CLI commands.
+ */
+export function printBlock(message) {
+    console.log('');
+    console.log(message);
+    console.log('');
+}
+//# sourceMappingURL=utils.js.map

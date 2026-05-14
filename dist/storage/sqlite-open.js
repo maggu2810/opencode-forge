@@ -1,0 +1,124 @@
+import { Database } from 'bun:sqlite';
+import { existsSync, mkdirSync, unlinkSync } from 'fs';
+import { dirname } from 'path';
+function deleteDatabaseFiles(dbPath) {
+    try {
+        unlinkSync(dbPath);
+    }
+    catch { }
+    try {
+        unlinkSync(dbPath + '-wal');
+    }
+    catch { }
+    try {
+        unlinkSync(dbPath + '-shm');
+    }
+    catch { }
+}
+function isCorruptionMessage(errorMsg) {
+    return (errorMsg.includes('database disk image is malformed') ||
+        errorMsg.includes('corrupt') ||
+        errorMsg.includes('SQLITE_CORRUPT') ||
+        errorMsg.includes('file is not a database'));
+}
+function applyPragmas(db, pragmas) {
+    for (const p of pragmas)
+        db.run(p);
+}
+function createFreshDatabase(dbPath, options) {
+    if (options.ensureParentDir) {
+        const parentDir = dirname(dbPath);
+        if (parentDir && parentDir !== '.' && parentDir !== '/') {
+            mkdirSync(parentDir, { recursive: true });
+        }
+    }
+    const freshDb = new Database(dbPath);
+    applyPragmas(freshDb, options.pragmas);
+    options.bootstrap(freshDb);
+    return freshDb;
+}
+/**
+ * Opens a SQLite database with integrity verification and corruption recovery.
+ *
+ * - Runs `PRAGMA integrity_check` after open.
+ * - Optionally runs a caller-supplied `validate` hook for deeper checks
+ *   (e.g. exercising data pages — catches WAL-level corruption that
+ *   integrity_check can miss).
+ * - On integrity failure OR a corruption error during open, deletes the
+ *   DB + WAL + SHM files and recreates a fresh database via `bootstrap`.
+ * - Non-corruption errors during open are re-thrown for the caller to handle.
+ */
+export function openSqliteWithIntegrityGuard(dbPath, options) {
+    options.preOpenCleanup?.(dbPath);
+    let db = null;
+    let needsBootstrap = false;
+    try {
+        db = new Database(dbPath);
+        applyPragmas(db, options.pragmas);
+        // Run integrity check
+        const integrityResult = db.prepare('PRAGMA integrity_check').get();
+        if (integrityResult.integrity_check !== 'ok') {
+            db.close();
+            console.error(`${options.label} corruption detected at ${dbPath}: ${integrityResult.integrity_check}`);
+            deleteDatabaseFiles(dbPath);
+            needsBootstrap = true;
+            db = null;
+        }
+        // Additional caller-supplied validation (e.g. query a real table to catch WAL-level corruption)
+        if (db && options.validate) {
+            try {
+                options.validate(db);
+            }
+            catch (validateErr) {
+                db.close();
+                const msg = validateErr instanceof Error ? validateErr.message : String(validateErr);
+                console.error(`${options.label} validation failed at ${dbPath}: ${msg}`);
+                deleteDatabaseFiles(dbPath);
+                needsBootstrap = true;
+                db = null;
+            }
+        }
+    }
+    catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        console.error(`${options.label} open failed at ${dbPath}: ${errorMsg}`);
+        // Close db handle if it was opened before failing
+        if (db) {
+            try {
+                db.close();
+            }
+            catch { }
+            db = null;
+        }
+        if (isCorruptionMessage(errorMsg)) {
+            deleteDatabaseFiles(dbPath);
+            needsBootstrap = true;
+        }
+        else {
+            // Re-throw transient errors (e.g. SQLITE_BUSY) so the caller can retry
+            throw err;
+        }
+    }
+    if (needsBootstrap || db === null) {
+        return createFreshDatabase(dbPath, options);
+    }
+    // Bootstrap schema on every open — must be idempotent
+    options.bootstrap(db);
+    return db;
+}
+/** Best-effort removal of an orphaned SHM file when its WAL sibling is missing. */
+export function cleanupOrphanedShmFile(dbPath) {
+    try {
+        const shmPath = dbPath + '-shm';
+        const walPath = dbPath + '-wal';
+        if (existsSync(shmPath) && !existsSync(walPath)) {
+            console.debug(`Removing orphaned SHM file for ${dbPath}`);
+            try {
+                unlinkSync(shmPath);
+            }
+            catch { }
+        }
+    }
+    catch { }
+}
+//# sourceMappingURL=sqlite-open.js.map

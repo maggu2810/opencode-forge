@@ -1,0 +1,219 @@
+/** Languages supported by tree-sitter backend */
+export type Language = 'typescript' | 'javascript' | 'python' | 'go' | 'rust' | 'java' | 'c' | 'cpp' | 'csharp' | 'ruby' | 'php' | 'swift' | 'kotlin' | 'scala' | 'lua' | 'elixir' | 'dart' | 'zig' | 'bash' | 'ocaml' | 'objc' | 'css' | 'html' | 'json' | 'toml' | 'yaml' | 'dockerfile' | 'vue' | 'rescript' | 'solidity' | 'tlaplus' | 'elisp' | 'unknown';
+/** Mapping from file extension to language */
+export declare const EXT_TO_LANGUAGE: Record<string, Language>;
+/** Detect language from a file path */
+export declare function detectLanguageFromPath(file: string): Language;
+/** Symbol kinds for classification */
+export type SymbolKind = 'function' | 'method' | 'class' | 'interface' | 'type' | 'variable' | 'constant' | 'enum' | 'property' | 'module' | 'namespace' | 'unknown';
+/** A location in source code */
+export interface SourceLocation {
+    file: string;
+    line: number;
+    column: number;
+    endLine?: number;
+    endColumn?: number;
+}
+/** A symbol found in source code */
+export interface SymbolInfo {
+    name: string;
+    kind: SymbolKind;
+    location: SourceLocation;
+    containerName?: string;
+}
+/** Import information */
+export interface ImportInfo {
+    source: string;
+    specifiers: string[];
+    isDefault: boolean;
+    isNamespace: boolean;
+    isTypeOnly: boolean;
+    isDynamic: boolean;
+    location: SourceLocation;
+}
+/** Export information */
+export interface ExportInfo {
+    name: string;
+    isDefault: boolean;
+    kind: SymbolKind;
+    location: SourceLocation;
+}
+/** File outline — top-level structure */
+export interface FileOutline {
+    file: string;
+    language: Language;
+    symbols: SymbolInfo[];
+    imports: ImportInfo[];
+    exports: ExportInfo[];
+}
+/** Database file record */
+export interface DbFile {
+    id: number;
+    path: string;
+    mtime_ms: number;
+    language: string;
+    line_count: number;
+    symbol_count: number;
+    pagerank: number;
+    is_barrel: boolean;
+}
+/** Database symbol record */
+export interface DbSymbol {
+    id: number;
+    file_id: number;
+    name: string;
+    kind: string;
+    line: number;
+    end_line: number;
+    is_exported: boolean;
+    signature?: string;
+    qualified_name?: string;
+}
+/** Graph statistics */
+export interface GraphStats {
+    files: number;
+    symbols: number;
+    edges: number;
+    summaries: number;
+    calls: number;
+}
+/** Top file result */
+export interface TopFileResult {
+    path: string;
+    pagerank: number;
+    lines: number;
+    symbols: number;
+    language: string;
+}
+/** File dependents/dependencies result */
+export interface FileDepResult {
+    path: string;
+    weight: number;
+}
+/** File co-changes result */
+export interface FileCoChangeResult {
+    path: string;
+    count: number;
+}
+/** File symbols result */
+export interface FileSymbolResult {
+    name: string;
+    kind: string;
+    isExported: boolean;
+    line: number;
+    endLine: number;
+}
+/** Symbol search result */
+export interface SymbolSearchResult {
+    name: string;
+    path: string;
+    kind: string;
+    line: number;
+    isExported: boolean;
+    pagerank: number;
+    id?: number;
+}
+/** Symbol signature result */
+export interface SymbolSignatureResult {
+    path: string;
+    kind: string;
+    signature: string;
+    line: number;
+}
+/** Caller result */
+export interface CallerResult {
+    callerName: string;
+    callerPath: string;
+    callerLine: number;
+    callLine: number;
+}
+/** Callee result */
+export interface CalleeResult {
+    calleeName: string;
+    calleeFile: string;
+    calleeLine: number;
+    callLine: number;
+}
+/** Unused export result */
+export interface UnusedExportResult {
+    name: string;
+    path: string;
+    kind: string;
+    line: number;
+    endLine: number;
+    lineCount: number;
+    usedInternally: boolean;
+}
+/** Duplicate structure result */
+export interface DuplicateStructureResult {
+    shapeHash: string;
+    kind: string;
+    nodeCount: number;
+    members: Array<{
+        path: string;
+        line: number;
+    }>;
+}
+/** Near duplicate result */
+export interface NearDuplicateResult {
+    similarity: number;
+    a: {
+        path: string;
+        line: number;
+        name: string;
+    };
+    b: {
+        path: string;
+        line: number;
+        name: string;
+    };
+}
+/** External package result */
+export interface ExternalPackageResult {
+    package: string;
+    fileCount: number;
+    specifiers: string[];
+}
+/** Scan preparation result */
+export interface PrepareScanResult {
+    totalFiles: number;
+    batchSize: number;
+}
+/** Scan batch result */
+export interface ScanBatchResult {
+    processed: number;
+    completed: boolean;
+    nextOffset: number;
+    totalFiles: number;
+}
+/** Orphan file result — files with no incoming edges (nobody imports them) */
+export interface OrphanFileResult {
+    path: string;
+    language: string;
+    lineCount: number;
+    symbolCount: number;
+}
+/** Circular dependency result — a cycle in the file dependency graph */
+export interface CircularDependencyResult {
+    cycle: string[];
+    length: number;
+}
+/** A file impacted by a set of changes */
+export interface ImpactedFile {
+    path: string;
+    depth: number;
+}
+/** Multi-file change impact analysis result */
+export interface ChangeImpactResult {
+    changedFiles: string[];
+    impactedFiles: ImpactedFile[];
+    totalAffected: number;
+}
+/** Symbol reference result — where a symbol is used across the codebase */
+export interface SymbolReferenceResult {
+    kind: 'import' | 'call' | 'reexport';
+    path: string;
+    line: number;
+    context?: string;
+}
+//# sourceMappingURL=types.d.ts.map

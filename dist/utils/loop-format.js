@@ -1,0 +1,27 @@
+import { formatTokens, truncate } from './format';
+export { formatTokens } from './format';
+export function formatSessionOutput(sessionOutput) {
+    const lines = [];
+    if (sessionOutput.messages.length > 0) {
+        lines.push('Recent Activity:');
+        for (const msg of sessionOutput.messages) {
+            const preview = truncate(msg.text.replace(/\n/g, ' ').trim(), 1000);
+            lines.push(`  [assistant] ${preview}`);
+        }
+        lines.push('');
+    }
+    const costStr = `$${sessionOutput.totalCost.toFixed(4)}`;
+    const t = sessionOutput.totalTokens;
+    const tokensStr = `${formatTokens(t.input)} in / ${formatTokens(t.output)} out / ${formatTokens(t.reasoning)} reasoning / ${formatTokens(t.cacheRead)} cache read / ${formatTokens(t.cacheWrite)} cache write`;
+    lines.push(`  Cost: ${costStr} | Tokens: ${tokensStr}`);
+    if (sessionOutput.fileChanges) {
+        const fc = sessionOutput.fileChanges;
+        lines.push(`  Files changed: ${fc.files} (+${fc.additions}/-${fc.deletions} lines)`);
+    }
+    return lines;
+}
+export function formatAuditResult(auditResult) {
+    const auditPreview = truncate(auditResult, 300);
+    return ['', 'Last Audit:', `  ${auditPreview}`];
+}
+//# sourceMappingURL=loop-format.js.map
