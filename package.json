@@ -86,13 +86,13 @@
     "typescript-eslint": "^8.58.0"
   },
   "scripts": {
-    "build": "bun scripts/build.ts",
-    "lint": "eslint .",
-    "prepublishOnly": "pnpm build",
-    "test": "bun test --max-concurrency=1",
-    "typecheck": "tsc --noEmit",
-    "cli": "bun src/cli/index.ts",
-    "docs:api": "typedoc",
-    "docs": "pnpm docs:api"
+    "Xbuild": "bun scripts/build.ts",
+    "Xlint": "eslint .",
+    "XprepublishOnly": "pnpm build",
+    "Xtest": "bun test --max-concurrency=1",
+    "Xtypecheck": "tsc --noEmit",
+    "Xcli": "bun src/cli/index.ts",
+    "Xdocs:api": "typedoc",
+    "Xdocs": "pnpm docs:api"
   }
 }
